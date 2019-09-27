@@ -1,7 +1,7 @@
 package = "raven-lua"
 version = "scm-1"
 source = {
-   url = "https://github.com/cloudflare/raven-lua.git"
+   url = "git://github.com/max101101/raven-lua.git"
 }
 description = {
    detailed = [[
@@ -14,17 +14,14 @@ to Sentry.]],
 }
 dependencies = {
   "lua >= 5.1",
-  "lua-cjson",
 }
 build = {
    type = "builtin",
    modules = {
       raven = "raven/init.lua",
-      ["raven.senders.luasocket"] = "raven/senders/luasocket.lua",
-      ["raven.senders.ngx"] = "raven/senders/ngx.lua",
-      ["raven.senders.reference"] = "raven/senders/reference.lua",
-      ["raven.senders.test"] = "raven/senders/test.lua",
       ["raven.util"] = "raven/util.lua",
+      ["raven.senders.tarantool"] = "raven/senders/tarantool.lua",
+      ["raven.senders.tarantool-legacy"] = "raven/senders/tarantool-legacy.lua",
    },
    copy_directories = {
    }

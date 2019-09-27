@@ -8,7 +8,6 @@
 -- @license BSD 3-clause (see LICENSE file)
 
 local util = require 'raven.util'
-local cjson = require 'cjson'
 
 local _M = {}
 _M._VERSION = util._VERSION
@@ -17,8 +16,6 @@ local debug_getinfo = debug.getinfo
 local table_insert = table.insert
 local unpack = unpack or table.unpack -- luacheck: ignore
 local generate_event_id = util.generate_event_id
-local iso8601 = util.iso8601
-local json_encode = cjson.encode
 
 local catcher_trace_level = 4
 
@@ -102,8 +99,6 @@ end
 local function capture_error_handler(err)
      local ok, json_exception = pcall(error_catcher, err)
      if not ok then
-         -- when failed, json_exception is error message
-         util.errlog('failed to run exception catcher: ' .. tostring(json_exception))
          -- try to return something anyway (error message with no culprit and
          -- no stacktrace
          json_exception = {
@@ -124,28 +119,27 @@ _M.capture_error_handler = capture_error_handler
 -- local raven = require "raven"
 -- local rvn = raven.new {
 --    sender = require("raven.senders.luasocket").new {
---       dsn = "http://pub:secret@127.0.0.1:8080/sentry/proj-id",
+--       dsn = "http://pub@127.0.0.1:8080/sentry/proj-id",
 --    },
---    tags = { foo = "bar", abc = "def" },
---    logger = "foo",
+--    server_name = "test",
+--    level       = "error",
+--    logger      = "test",
+--    environment = "test",
+--    tags        = { foo = "bar", abc = "def" },
+--    extra       = {},
 -- }
 function _M.new(conf)
     local obj = {
         sender = assert(conf.sender, "sender is required"),
+        server_name = conf.server_name or "undefined",
         level = conf.level or "error",
         logger = conf.logger or "root",
+        environment = conf.environment or nil,
         tags = conf.tags or nil,
         extra = conf.extra or nil,
     }
 
     return setmetatable(obj, raven_mt)
-end
-
---- This method is reponsible to return the `server_name` field.
--- The default implementation just returns `"undefined"`, users are encouraged
--- to override this to something more sensible.
-function _M.get_server_name()
-    return "undefined"
 end
 
 --- This table can be used to tune the message reporting.
@@ -231,7 +225,11 @@ end
 -- @usage
 -- local rvn = ravennew(...)
 -- local id, err = rvn:captureMessage("simple message",
---     { tags = { foo = "bar", abc = "def" }})
+--     {
+--         tags  = { foo = "bar", abc = "def" },
+--         extra = {},
+--         level = "warn",
+--     })
 function raven_mt:captureMessage(message, conf)
     if not conf then
         conf = { trace_level = 2 }
@@ -296,11 +294,13 @@ function raven_mt:send_report(json, conf)
         end
     end
 
-    json.event_id  = event_id
-    json.timestamp = iso8601()
-    json.level     = self.level
-    json.platform  = "lua"
-    json.logger    = self.logger
+    json.server_name = self.server_name
+    json.event_id    = event_id
+    json.timestamp   = os.time()
+    json.level       = self.level
+    json.platform    = "lua"
+    json.logger      = self.logger
+    json.environment = self.environment
 
     if conf then
         json.tags = merge_tables(conf.tags, self.tags)
@@ -314,13 +314,9 @@ function raven_mt:send_report(json, conf)
         json.extra = self.extra
     end
 
-    json.server_name = _M.get_server_name()
-
-    local json_str = json_encode(json)
-    local ok, err = self.sender:send(json_str)
+    local ok, err = self.sender:send(json)
 
     if not ok then
-        util.errlog("Failed to send to Sentry: ", err, " ",  json_str)
         return nil, err
     end
     return json.event_id
